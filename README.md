@@ -1,8 +1,10 @@
 # EGO Planner + PX4 SITL 单墙避障演示
 
+## 项目简介
+
 本仓库保存一套已经在 Ubuntu 24.04 / ROS 2 Jazzy 上跑通的最小演示：Gazebo 深度点云进入 EGO Planner，EGO 生成的位置轨迹经自写 ROS 2 bridge 转换为 PX4 Offboard 位置设定值，最终让 `gz_x500_depth` 绕过单墙并到达目标。
 
-仓库只包含自写 bridge、演示 world、运行说明和成功视频，不包含 PX4-Autopilot 或 ego-planner-swarm 的完整源码。
+仓库只包含自写 bridge、成功版本配置快照、演示 world、中文文档和成功视频，不包含 PX4-Autopilot 或 ego-planner-swarm 的完整源码。
 
 ## 成功视频
 
@@ -19,6 +21,7 @@
 flowchart LR
     GZ["Gazebo simple_wall<br/>gz_x500_depth"]
     DEPTH["/depth_camera/points"]
+    ROSGZ["ros_gz_bridge"]
     POSE["/world/simple_wall/dynamic_pose/info"]
     CLOUD["gazebo_cloud_to_ego_cloud"]
     ODOM["px4_to_ego_odom"]
@@ -27,8 +30,8 @@ flowchart LR
     ARM["px4_offboard_arm"]
     PX4["PX4 SITL Offboard"]
 
-    GZ --> DEPTH --> CLOUD
-    GZ --> POSE --> CLOUD
+    GZ --> DEPTH --> ROSGZ --> CLOUD
+    GZ --> POSE --> ROSGZ
     PX4 -->|"VehicleLocalPosition"| ODOM -->|"Odometry ENU"| EGO
     CLOUD -->|"world PointCloud2"| EGO
     EGO -->|"PositionCommand"| SETPOINT -->|"TrajectorySetpoint NED"| PX4
@@ -37,11 +40,29 @@ flowchart LR
 
 更细的消息与坐标关系见 [docs/architecture.md](docs/architecture.md)。
 
+核心避障数据流：
+
+```text
+Gazebo Depth Camera
+→ /depth_camera/points
+→ ros_gz_bridge
+→ gazebo_cloud_to_ego_cloud.py
+→ /drone_0_pcl_render_node/cloud
+→ EGO Planner
+→ /drone_0_planning/pos_cmd
+→ ego_to_px4_setpoint.py
+→ /fmu/in/trajectory_setpoint
+→ PX4 Offboard
+```
+
 ## 仓库内容
 
 ```text
 ego_px4_sitl_demo/
 ├── README.md
+├── config/
+│   ├── ego_planner/
+│   └── gazebo/OakD-Lite/model.sdf
 ├── docs/
 ├── ego_px4_bridge/
 ├── videos/ego_px4_single_wall_demo.mp4
@@ -55,6 +76,14 @@ ego_px4_sitl_demo/
 - `gazebo_cloud_to_ego_cloud.py`：深度点云利用 Gazebo Ground Truth Pose 转到 `world`，抽样并滤除地面点。
 - `ego_to_px4_setpoint.py`：EGO `PositionCommand` ENU → PX4 `TrajectorySetpoint` NED；解锁后先悬停 6 秒，再跟轨迹；yaw 跟随水平速度方向。
 - `px4_offboard_arm.py`：以 20 Hz 发布 Offboard 心跳，并在启动后 1～5 秒重复请求 Offboard 与 Arm。
+
+当前运行源码来自 Ubuntu bridge 的成功分支 `yaw_follow_velocity`：
+
+- `214ab1f use gazebo pose for cloud transform`
+- `2b2d9e9 add yaw follow velocity for offboard tracking`
+- `d6173ae ignore python cache files`（同步时的最新提交）
+
+EGO 和 Gazebo 的成功参数、原始路径及安装方法见 [config/README.md](config/README.md)。
 
 ## 环境依赖
 
@@ -93,7 +122,22 @@ cp ~/ego_px4_sitl_demo/worlds/simple_wall.sdf \
   ~/drone_ws/px4_clean/Tools/simulation/gz/worlds/simple_wall.sdf
 ```
 
-本演示还对 PX4 的 `Tools/simulation/gz/models/OakD-Lite/model.sdf` 做过本地性能优化，但该 PX4 文件没有复制进仓库：关闭 IMX214 RGB 相机、保留 depth camera，并将 depth 分辨率调为 `80x60`，同时调整 `update_rate` 与 `clip far`。原始 RGB + depth 曾令 RTF 降至约 0.04～0.05；关闭 RGB 后恢复到约 1.0。
+安装 EGO 与 OakD-Lite 成功配置：
+
+```bash
+cp ~/ego_px4_sitl_demo/config/ego_planner/single_run_in_sim.launch.py \
+  ~/ego_jazzy_ws/src/ego-planner-swarm/src/planner/plan_manage/launch/
+cp ~/ego_px4_sitl_demo/config/ego_planner/advanced_param.launch.py \
+  ~/ego_jazzy_ws/src/ego-planner-swarm/src/planner/plan_manage/launch/
+cp ~/ego_px4_sitl_demo/config/gazebo/OakD-Lite/model.sdf \
+  ~/drone_ws/px4_clean/Tools/simulation/gz/models/OakD-Lite/model.sdf
+
+cd ~/ego_jazzy_ws
+source /opt/ros/jazzy/setup.bash
+colcon build --symlink-install
+```
+
+OakD-Lite 成功配置关闭 IMX214 RGB camera，只保留 `80x60`、10 Hz、0.2～19.1 m 的 depth camera。原始 RGB + depth 曾令 RTF 降至约 0.04～0.05；关闭 RGB 后恢复到约 1.0。
 
 ## 启动步骤
 
@@ -230,7 +274,7 @@ yaw_ned = π/2 - yaw_enu
 - `/drone_0_planning/bspline`
 - `/drone_0_planning/pos_cmd`
 
-## 成功判据
+## 当前成功效果
 
 - 点云不随飞机产生不合理漂移，地面点基本被过滤。
 - 扫到墙时墙体点云出现，`occupancy_inflate` 与墙基本重合。
@@ -239,16 +283,20 @@ yaw_ned = π/2 - yaw_enu
 - 机头随轨迹速度方向转动。
 - 飞机绕过单墙、到达目标且不碰撞。
 
-## 常见问题
+## 注意事项
 
 - **没有 PX4 topic**：确认 `MicroXRCEAgent udp4 -p 8888` 正在运行，并检查 UDP 8888 端口。
 - **topic 名不匹配**：不同 PX4/`px4_msgs` 版本可能改变后缀，按 `ros2 topic list` 修改订阅名。
 - **点云漂移或出现幽灵墙**：确认 dynamic pose bridge 已启动；不要重新使用仿真中不可靠的 PX4 heading。
 - **点云为空**：检查 `/depth_camera/points` 和 `/world/simple_wall/dynamic_pose/info` 是否都有数据。
+- **切换 world**：从 `simple_wall` 切换到 `walls` 时，dynamic pose topic 和 `gazebo_cloud_to_ego_cloud.py` 的订阅也必须同步切换为 `/world/walls/dynamic_pose/info`。
 - **地面进入 occupancy**：核对相机外参、`ground_z_min` 和 Gazebo world 坐标。
+- **墙底缺失或规划线从墙底穿过**：`ground_z_min` 不能设得过大；成功版本为 `0.1 m`。
 - **无法 Arm/进入 Offboard**：必须先连续发送 OffboardControlMode 与有效 setpoint；检查规划线和 PX4 preflight 日志。
 - **RTF 很低**：关闭 OakD-Lite RGB 相机、降低 depth 分辨率与更新率，确认 RTF 回到可用范围。
 - **机头低速抖动**：当前代码在水平速度低于 0.05 m/s 时保持上一次有效 yaw；检查速度噪声和阈值。
+- **仿真世界混乱**：重启前清理残留的 PX4、Gazebo 和 bridge 进程，避免多个世界/节点同时发布。
+- **模型初始位置与 odom 原点不同**：`PX4_GZ_MODEL_POSE` 改变 Gazebo world pose，但 PX4 `vehicle_local_position` 启动后会在本地原点归零；两者不是同一个坐标原点。
 
 详细排障过程见 [docs/debug_log.md](docs/debug_log.md)。
 
@@ -257,6 +305,8 @@ yaw_ned = π/2 - yaw_enu
 近期方向包括：完整姿态 NED↔ENU 转换、按 Gazebo 实体名选择 pose、参数化相机外参与滤波阈值、增加失联/超时/地理围栏等 failsafe，以及用 D455、MID360 + FAST-LIO2 替换仿真传感器。见 [docs/future_work.md](docs/future_work.md)。
 
 面试复盘问题见 [docs/interview.md](docs/interview.md)。
+
+完整调试过程见 [docs/debug_log.md](docs/debug_log.md)，项目演进顺序见 [docs/project_history.md](docs/project_history.md)。
 
 ## 许可
 

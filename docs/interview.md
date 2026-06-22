@@ -2,6 +2,12 @@
 
 以下问答以本仓库的实际实现为基础。回答时先讲“为什么”，再讲接口与验证证据。
 
+当前成功版本的面试证据链：bridge 分支 `yaw_follow_velocity` 包含 Gazebo pose 修复提交 `214ab1f` 与 yaw 跟随提交 `2b2d9e9`；EGO 的成功配置快照位于 `config/ego_planner/`；OakD-Lite depth-only 配置位于 `config/gazebo/OakD-Lite/model.sdf`；最终效果是 simple_wall 绕障、到点且不碰撞。
+
+接口速记：`VehicleLocalPosition` 提供 PX4 本地 NED 位置/速度和有效性标志；`VehicleStatus` 提供解锁与导航状态，bridge 用它检测首次 Arm、启动 6 秒 hold 计时，并在 Disarm 后复位。
+
+仿真桥接速记：`ros_gz_bridge` 把 Gazebo depth cloud 和 `dynamic_pose` 转成 ROS 2 的 `PointCloud2`/`TFMessage`；它只负责消息系统转换，world 坐标变换由自写 cloud bridge 完成。
+
 ## 1. 这个项目解决了什么问题？
 
 它打通 Gazebo 深度传感器、EGO Planner 与 PX4 Offboard：把 PX4 状态转换成 EGO 可用的 ENU odom，把深度点云转换到稳定 world 坐标，再把 EGO 轨迹转换为 PX4 NED 设定值，实现单墙自主绕障。
