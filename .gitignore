@@ -1,5 +1,6 @@
 __pycache__/
 *.py[cod]
+*.pyc
 *$py.class
 
 build/
@@ -14,6 +15,6 @@ log/
 *.bag
 *.db3
 *.mcap
-*.bak_*
+*.bak*
 *.log
 .pytest_cache/
