@@ -6,11 +6,12 @@
 
 ## 成功视频
 
-[查看 56 秒单墙避障演示（MOV，约 72 MiB）](images/wall_avoidance_demo.MOV)
+[查看 EGO-PX4 单墙避障演示视频（MP4）](videos/ego_px4_single_wall_demo.mp4)
 
-- 画面：1920 × 1440，30 FPS
-- 视频编码：HEVC
-- SHA-256：`85d0c1d0b1d82ffef95c9e6a94fe5f63e6ebdd98a1b4732d7e8f291c17558aa1`
+- 时长：约 95 秒
+- 画面：1280 × 960，30 FPS
+- 视频编码：H.264，音频编码：AAC
+- SHA-256：`bcca178471dd3feb60fd67785361ce47b9e180275a48731e4ed816a5f414459c`
 
 ## 系统架构
 
@@ -43,7 +44,7 @@ ego_px4_sitl_demo/
 ├── README.md
 ├── docs/
 ├── ego_px4_bridge/
-├── images/wall_avoidance_demo.MOV
+├── videos/ego_px4_single_wall_demo.mp4
 ├── scripts/check_topics.sh
 └── worlds/simple_wall.sdf
 ```
